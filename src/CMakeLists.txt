@@ -56,9 +56,14 @@ add_library(mcl
     ../include/mcl/type_traits/is_instance_of_template.hpp
     assert.cpp
 )
-target_include_directories(mcl PUBLIC ../include/)
+target_include_directories(mcl
+    PUBLIC
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../include>
+        $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
+)
 target_compile_options(mcl PRIVATE ${MCL_CXX_FLAGS})
-target_link_libraries(mcl PUBLIC fmt::fmt)
+target_link_libraries(mcl PUBLIC $<BUILD_INTERFACE:fmt::fmt>)
+add_library(merry::mcl ALIAS mcl)
 
 include(CreateTargetDirectoryGroups)
 create_target_directory_groups(mcl)

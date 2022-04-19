@@ -1,5 +1,7 @@
 cmake_minimum_required(VERSION 3.12 FATAL_ERROR)
-project(mcl CXX)
+include(GNUInstallDirs)
+
+project(mcl LANGUAGES CXX VERSION 0.1.2)
 
 # Project options
 option(MCL_WARNINGS_AS_ERRORS "Warnings as errors" ON)
@@ -96,3 +98,29 @@ add_subdirectory(src)
 if (TARGET Catch2::Catch2)
     add_subdirectory(tests)
 endif()
+
+# Install instructions
+
+include(GNUInstallDirs)
+include(CMakePackageConfigHelpers)
+
+install(TARGETS mcl EXPORT mclTargets)
+install(EXPORT mclTargets
+    NAMESPACE merry::
+    DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/mcl"
+)
+
+configure_package_config_file(CMakeModules/mclConfig.cmake.in
+    mclConfig.cmake
+    INSTALL_DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/mcl"
+)
+write_basic_package_version_file(mclConfigVersion.cmake
+    COMPATIBILITY SameMajorVersion
+)
+install(FILES
+    "${CMAKE_CURRENT_BINARY_DIR}/mclConfig.cmake"
+    "${CMAKE_CURRENT_BINARY_DIR}/mclConfigVersion.cmake"
+    DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/mcl"
+)
+
+install(DIRECTORY include/ TYPE INCLUDE FILES_MATCHING PATTERN "*.hpp")
