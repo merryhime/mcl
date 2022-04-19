@@ -8,7 +8,7 @@
 #include <type_traits>
 #include <utility>
 
-#include "mcl/(.*).hpp"
+#include <mcl/macro/anonymous_variable.hpp>
 
 namespace mcl::detail {
 

@@ -4,6 +4,8 @@
 
 #pragma once
 
+#include <mcl/macro/concatenate_tokens.hpp>
+
 #ifdef __COUNTER__
 #    define ANONYMOUS_VARIABLE(str) CONCATENATE_TOKENS(str, __COUNTER__)
 #else

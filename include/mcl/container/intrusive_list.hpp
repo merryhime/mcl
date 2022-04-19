@@ -39,13 +39,13 @@ template<typename T>
 class intrusive_list_sentinel final : public intrusive_list_node<T> {
     using intrusive_list_node<T>::next;
     using intrusive_list_node<T>::prev;
-    using intrusive_list_node<T>::is_sentinel;
+    using intrusive_list_node<T>::is_sentinel_;
 
 public:
     intrusive_list_sentinel() {
         next = this;
         prev = this;
-        is_sentinel = true;
+        is_sentinel_ = true;
     }
 };
 

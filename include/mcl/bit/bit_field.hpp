@@ -19,7 +19,7 @@ constexpr T ones() {
     if constexpr (count == 0) {
         return 0;
     } else {
-        return ~static_cast<T>(0) >> (bitsizeof<T> - count);
+        return static_cast<T>(~static_cast<T>(0)) >> (bitsizeof<T> - count);
     }
 }
 
@@ -165,7 +165,7 @@ constexpr T sign_extend(size_t bit_count, T value) {
 /// Replicate an element across a value of type T.
 template<size_t element_size, BitIntegral T>
 constexpr T replicate_element(T value) {
-    static_assert(element_size > bitsizeof<T>, "element_size is too large");
+    static_assert(element_size <= bitsizeof<T>, "element_size is too large");
     static_assert(bitsizeof<T> % element_size == 0, "bitsize of T not divisible by element_size");
 
     if constexpr (element_size == bitsizeof<T>) {
@@ -175,10 +175,18 @@ constexpr T replicate_element(T value) {
     }
 }
 
+/// Replicate an element of type U across a value of type T.
+template<BitIntegral U, BitIntegral T>
+constexpr T replicate_element(T value) {
+    static_assert(bitsizeof<U> <= bitsizeof<T>, "element_size is too large");
+
+    return replicate_element<bitsizeof<U>, T>(value);
+}
+
 /// Replicate an element across a value of type T.
 template<BitIntegral T>
 constexpr T replicate_element(size_t element_size, T value) {
-    ASSERT_MSG(element_size > bitsizeof<T>, "element_size is too large");
+    ASSERT_MSG(element_size <= bitsizeof<T>, "element_size is too large");
     ASSERT_MSG(bitsizeof<T> % element_size == 0, "bitsize of T not divisible by element_size");
 
     if (element_size == bitsizeof<T>) {

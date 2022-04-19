@@ -4,7 +4,7 @@
 
 #pragma once
 
-#include "mcl/same_as.hpp"
+#include "mcl/concepts/same_as.hpp"
 
 namespace mcl {
 

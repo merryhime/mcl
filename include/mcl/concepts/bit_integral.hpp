@@ -11,6 +11,6 @@ namespace mcl {
 
 /// Integral upon which bit operations can be safely performed.
 template<typename T>
-concept BitIntegral = IsAnyOf<T, u8, u16, u32, u64>;
+concept BitIntegral = IsAnyOf<T, u8, u16, u32, u64, uptr, size_t>;
 
 }  // namespace mcl

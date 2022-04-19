@@ -14,7 +14,7 @@ namespace mcl::bit {
 
 template<BitIntegral T>
 inline size_t count_ones(T x) {
-    return std::bitset<bitsizeof<Integral>>(x).count();
+    return std::bitset<bitsizeof<T>>(x).count();
 }
 
 template<BitIntegral T>
