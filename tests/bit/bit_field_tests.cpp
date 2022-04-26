@@ -9,7 +9,8 @@
 #include <mcl/bit/bit_field.hpp>
 #include <mcl/stdint.hpp>
 
-TEST_CASE("mcl::bit::ones", "[bit]") {
+TEST_CASE("mcl::bit::ones", "[bit]")
+{
     const std::array cases{
         std::make_tuple<size_t, u8>(0, 0x00),
         std::make_tuple<size_t, u8>(1, 0x01),

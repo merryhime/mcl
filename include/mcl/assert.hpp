@@ -16,7 +16,8 @@ namespace mcl::detail {
 [[noreturn]] void assert_terminate_impl(fmt::string_view msg, fmt::format_args args);
 
 template<typename... Ts>
-[[noreturn]] void assert_terminate(fmt::string_view msg, Ts... args) {
+[[noreturn]] void assert_terminate(fmt::string_view msg, Ts... args)
+{
     assert_terminate_impl(msg, fmt::make_format_args(args...));
 }
 
