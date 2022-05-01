@@ -280,15 +280,14 @@ private:
         if (!mb_ptr)
             return;
 
-        while (!is_full(*mb_ptr)) {
+        while (*mb_ptr == detail::meta_byte::empty || *mb_ptr == detail::meta_byte::tombstone) {
             ++mb_ptr;
             ++slot_ptr;
+        }
 
-            if (*mb_ptr == detail::meta_byte::end_sentinel) {
-                mb_ptr = nullptr;
-                slot_ptr = nullptr;
-                return;
-            }
+        if (*mb_ptr == detail::meta_byte::end_sentinel) {
+            mb_ptr = nullptr;
+            slot_ptr = nullptr;
         }
     }
 
@@ -320,6 +319,7 @@ private:
     static_assert(!std::is_reference_v<mapped_type>);
 
     static constexpr size_t group_size{16};
+    static constexpr size_t average_max_group_load{group_size - 2};
 
 public:
     hmap()
@@ -637,7 +637,7 @@ private:
 
         initialize_members(new_group_count);
 
-        for (; iter != iterator{}; ++iter) {
+        for (; iter != end(); ++iter) {
             const size_t hash{hasher{}(iter->first)};
             const size_t item_index{find_empty_slot_to_insert(hash)};
 
@@ -661,7 +661,7 @@ private:
     {
         const size_t group_count{group_index_mask + 1};
 
-        empty_slots = group_count * group_size * 7 / 8;
+        empty_slots = group_count * average_max_group_load;
         full_slots = 0;
 
         std::memset(mbs.get(), static_cast<int>(detail::meta_byte::empty), group_count * group_size);
