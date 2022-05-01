@@ -15,8 +15,11 @@ TEST_CASE("mcl::hmap", "[hmap]")
 
     constexpr int count = 100000;
 
+    REQUIRE(double_map.empty());
+
     for (int i = 0; i < count; ++i) {
         double_map[i] = i * 2;
+        REQUIRE(double_map.size() == i + 1);
     }
 
     for (int i = 0; i < count; ++i) {
@@ -35,5 +38,13 @@ TEST_CASE("mcl::hmap", "[hmap]")
     for (auto [k, v] : indexes_count) {
         (void)k;
         REQUIRE(v == 1);
+    }
+
+    REQUIRE(!double_map.empty());
+    double_map.clear();
+    REQUIRE(double_map.empty());
+
+    for (auto [k, v] : double_map) {
+        REQUIRE(false);
     }
 }
