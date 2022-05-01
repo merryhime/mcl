@@ -17,6 +17,8 @@
 
 #if defined(MCL_ARCHITECTURE_ARM64)
 #    include <arm_neon.h>
+#elif defined(MCL_ARCHITECTURE_X86_64)
+#    include <emmintrin.h>
 #else
 #    include <array>
 #    include <cstring>
@@ -99,6 +101,44 @@ struct meta_byte_group {
                 const size_t match_index{static_cast<size_t>(8 + std::countr_zero(match_result_v) / 8)};           \
                 __VA_ARGS__                                                                                        \
             }                                                                                                      \
+        }
+
+#elif defined(MCL_ARCHITECTURE_X86_64)
+
+struct meta_byte_group {
+    meta_byte_group(meta_byte* ptr)
+        : data{_mm_load_si128(reinterpret_cast<__m128i const*>(ptr))}
+    {}
+
+    u16 match(meta_byte cmp)
+    {
+        return _mm_movemask_epi8(_mm_cmpeq_epi8(data, _mm_set1_epi8(static_cast<u8>(cmp))));
+    }
+
+    u16 match_empty_or_tombstone()
+    {
+        return _mm_movemask_epi8(data);
+    }
+
+    bool is_any_empty()
+    {
+        return match(meta_byte::empty);
+    }
+
+    bool is_all_empty_or_tombstone()
+    {
+        return match_empty_or_tombstone() == 0xffff;
+    }
+
+    __m128i data;
+};
+
+#    define MCL_HMAP_MATCH_META_BYTE_GROUP(MATCH, ...)                                                 \
+        {                                                                                              \
+            for (const u64 match_result{MATCH}; match_result != 0; match_result &= match_result - 1) { \
+                const size_t match_index{static_cast<size_t>(std::countr_zero(match_result))};         \
+                __VA_ARGS__                                                                            \
+            }                                                                                          \
         }
 
 #else
