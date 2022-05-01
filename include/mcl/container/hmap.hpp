@@ -11,6 +11,7 @@
 
 #include "mcl/assert.hpp"
 #include "mcl/bitsizeof.hpp"
+#include "mcl/hash/xmrx.hpp"
 #include "mcl/hint/assume.hpp"
 #include "mcl/macro/architecture.hpp"
 #include "mcl/stdint.hpp"
@@ -295,7 +296,7 @@ private:
     slot_type* slot_ptr{nullptr};
 };
 
-template<typename KeyType, typename MappedType, typename Hash = std::hash<KeyType>, typename Pred = std::equal_to<KeyType>>
+template<typename KeyType, typename MappedType, typename Hash = hash::avalanche_xmrx<KeyType>, typename Pred = std::equal_to<KeyType>>
 class hmap {
 public:
     using key_type = KeyType;
