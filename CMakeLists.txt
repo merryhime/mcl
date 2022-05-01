@@ -3,8 +3,16 @@ include(GNUInstallDirs)
 
 project(mcl LANGUAGES CXX VERSION 0.1.8)
 
+# Determine if we're built as a subproject (using add_subdirectory)
+# or if this is the master project.
+set(MASTER_PROJECT OFF)
+if (CMAKE_CURRENT_SOURCE_DIR STREQUAL CMAKE_SOURCE_DIR)
+  set(MASTER_PROJECT ON)
+endif()
+
 # Project options
-option(MCL_WARNINGS_AS_ERRORS "Warnings as errors" ON)
+option(MCL_WARNINGS_AS_ERRORS "Warnings as errors" ${MASTER_PROJECT})
+option(MCL_INSTALL "Enable installation" ${MASTER_PROJECT})
 
 # Default to a Release build
 if (NOT CMAKE_BUILD_TYPE)
@@ -100,27 +108,28 @@ if (TARGET Catch2::Catch2)
 endif()
 
 # Install instructions
+if (MCL_INSTALL)
+    include(GNUInstallDirs)
+    include(CMakePackageConfigHelpers)
 
-include(GNUInstallDirs)
-include(CMakePackageConfigHelpers)
+    install(TARGETS mcl EXPORT mclTargets)
+    install(EXPORT mclTargets
+        NAMESPACE merry::
+        DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/mcl"
+    )
 
-install(TARGETS mcl EXPORT mclTargets)
-install(EXPORT mclTargets
-    NAMESPACE merry::
-    DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/mcl"
-)
+    configure_package_config_file(CMakeModules/mclConfig.cmake.in
+        mclConfig.cmake
+        INSTALL_DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/mcl"
+    )
+    write_basic_package_version_file(mclConfigVersion.cmake
+        COMPATIBILITY SameMajorVersion
+    )
+    install(FILES
+        "${CMAKE_CURRENT_BINARY_DIR}/mclConfig.cmake"
+        "${CMAKE_CURRENT_BINARY_DIR}/mclConfigVersion.cmake"
+        DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/mcl"
+    )
 
-configure_package_config_file(CMakeModules/mclConfig.cmake.in
-    mclConfig.cmake
-    INSTALL_DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/mcl"
-)
-write_basic_package_version_file(mclConfigVersion.cmake
-    COMPATIBILITY SameMajorVersion
-)
-install(FILES
-    "${CMAKE_CURRENT_BINARY_DIR}/mclConfig.cmake"
-    "${CMAKE_CURRENT_BINARY_DIR}/mclConfigVersion.cmake"
-    DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/mcl"
-)
-
-install(DIRECTORY include/ TYPE INCLUDE FILES_MATCHING PATTERN "*.hpp")
+    install(DIRECTORY include/ TYPE INCLUDE FILES_MATCHING PATTERN "*.hpp")
+endif()
