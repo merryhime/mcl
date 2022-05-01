@@ -17,6 +17,9 @@
 
 #if defined(MCL_ARCHITECTURE_ARM64)
 #    include <arm_neon.h>
+#else
+#    include <array>
+#    include <cstring>
 #endif
 
 namespace mcl {
@@ -99,7 +102,62 @@ struct meta_byte_group {
         }
 
 #else
-#    error "TODO: Generic implementation"
+
+struct meta_byte_group {
+    static constexpr u64 msb = 0x8080808080808080;
+    static constexpr u64 lsb = 0x0101010101010101;
+    static constexpr u64 not_msb = 0x7f7f7f7f7f7f7f7f;
+    static constexpr u64 not_lsb = 0xfefefefefefefefe;
+
+    meta_byte_group(meta_byte* ptr)
+    {
+        std::memcpy(data.data(), ptr, sizeof(data));
+    }
+
+    std::array<u64, 2> match(meta_byte cmp)
+    {
+        DEBUG_ASSERT(is_full(cmp));
+
+        const u64 vcmp = lsb * static_cast<u64>(cmp);
+        return {(msb - ((data[0] ^ vcmp) & not_msb)) & ~data[0] & msb, (msb - ((data[1] ^ vcmp) & not_msb)) & ~data[1] & msb};
+    }
+
+    std::array<u64, 2> match_empty_or_tombstone()
+    {
+        return {data[0] & msb, data[1] & msb};
+    }
+
+    bool is_any_empty()
+    {
+        static_assert((static_cast<u8>(meta_byte::empty) & 0xc0) == 0xc0);
+        static_assert((static_cast<u8>(meta_byte::tombstone) & 0xc0) == 0x80);
+
+        return (data[0] & (data[0] << 1) & msb) || (data[1] & (data[1] << 1) & msb);
+    }
+
+    bool is_all_empty_or_tombstone()
+    {
+        return (data[0] & data[1] & msb) == msb;
+    }
+
+    std::array<u64, 2> data;
+};
+
+#    define MCL_HMAP_MATCH_META_BYTE_GROUP(MATCH, ...)                                                             \
+        {                                                                                                          \
+            const std::array<u64, 2> match_result{MATCH};                                                          \
+                                                                                                                   \
+            for (u64 match_result_v{match_result[0]}; match_result_v != 0; match_result_v &= match_result_v - 1) { \
+                const size_t match_index{static_cast<size_t>(std::countr_zero(match_result_v) / 8)};               \
+                __VA_ARGS__                                                                                        \
+            }                                                                                                      \
+                                                                                                                   \
+            for (u64 match_result_v{match_result[1]}; match_result_v != 0; match_result_v &= match_result_v - 1) { \
+                const size_t match_index{static_cast<size_t>(8 + std::countr_zero(match_result_v) / 8)};           \
+                __VA_ARGS__                                                                                        \
+            }                                                                                                      \
+        }
+
 #endif
 
 template<typename ValueType>
