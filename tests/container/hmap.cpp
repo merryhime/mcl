@@ -24,6 +24,22 @@ TEST_CASE("mcl::hmap", "[hmap]")
 
     for (int i = 0; i < count; ++i) {
         REQUIRE(double_map[i] == i * 2);
+        REQUIRE(double_map.contains(i));
+    }
+
+    for (int i = 0; i < count; ++i) {
+        auto iter = double_map.find(i);
+        REQUIRE(iter->first == i);
+        REQUIRE(iter->second == i * 2);
+    }
+
+    for (int i = count; i < count * 2; ++i) {
+        REQUIRE(!double_map.contains(i));
+    }
+
+    for (int i = 0; i < count; ++i) {
+        auto result = double_map.try_emplace(i, 0);
+        REQUIRE(!result.second);
     }
 
     for (auto [k, v] : double_map) {

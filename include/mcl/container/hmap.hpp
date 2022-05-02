@@ -4,210 +4,21 @@
 
 #pragma once
 
-#include <bit>
 #include <cstddef>
 #include <functional>
+#include <limits>
+#include <type_traits>
 #include <utility>
 
 #include "mcl/assert.hpp"
-#include "mcl/bitsizeof.hpp"
+#include "mcl/container/detail/meta_byte.hpp"
+#include "mcl/container/detail/slot_union.hpp"
 #include "mcl/hash/xmrx.hpp"
 #include "mcl/hint/assume.hpp"
-#include "mcl/macro/architecture.hpp"
-#include "mcl/stdint.hpp"
-
-#if defined(MCL_ARCHITECTURE_ARM64)
-#    include <arm_neon.h>
-#elif defined(MCL_ARCHITECTURE_X86_64)
-#    include <emmintrin.h>
-#else
-#    include <array>
-#    include <cstring>
-#endif
 
 namespace mcl {
-
 template<typename KeyType, typename MappedType, typename Hash, typename Pred>
 class hmap;
-
-namespace detail {
-
-/// if MSB is 0, this is a full slot. remaining 7 bits is a partial hash of the key.
-/// if MSB is 1, this is a non-full slot.
-enum class meta_byte : u8 {
-    empty = 0xff,
-    tombstone = 0x80,
-    end_sentinel = 0x88,
-};
-
-inline bool is_full(meta_byte mb)
-{
-    return (static_cast<u8>(mb) & 0x80) == 0;
-}
-
-inline meta_byte meta_byte_from_hash(size_t hash)
-{
-    return static_cast<meta_byte>(hash >> (bitsizeof<size_t> - 7));
-}
-
-inline size_t group_index_from_hash(size_t hash, size_t group_index_mask)
-{
-    return hash & group_index_mask;
-}
-
-#if defined(MCL_ARCHITECTURE_ARM64)
-
-struct meta_byte_group {
-    meta_byte_group(meta_byte* ptr)
-        : data{vld1q_u8(reinterpret_cast<u8*>(ptr))}
-    {}
-
-    uint64x2_t match(meta_byte cmp)
-    {
-        return vreinterpretq_u64_u8(vandq_u8(vceqq_u8(data,
-                                                      vdupq_n_u8(static_cast<u8>(cmp))),
-                                             vdupq_n_u8(0x80)));
-    }
-
-    uint64x2_t match_empty_or_tombstone()
-    {
-        return vreinterpretq_u64_u8(vandq_u8(data,
-                                             vdupq_n_u8(0x80)));
-    }
-
-    bool is_any_empty()
-    {
-        static_assert(meta_byte::empty == static_cast<meta_byte>(0xff), "empty must be maximal u8 value");
-        return vmaxvq_u8(data) == 0xff;
-    }
-
-    bool is_all_empty_or_tombstone()
-    {
-        return vminvq_u8(vandq_u8(data, vdupq_n_u8(0x80))) == 0x80;
-    }
-
-    uint8x16_t data;
-};
-
-#    define MCL_HMAP_MATCH_META_BYTE_GROUP(MATCH, ...)                                                             \
-        {                                                                                                          \
-            const uint64x2_t match_result{MATCH};                                                                  \
-                                                                                                                   \
-            for (u64 match_result_v{match_result[0]}; match_result_v != 0; match_result_v &= match_result_v - 1) { \
-                const size_t match_index{static_cast<size_t>(std::countr_zero(match_result_v) / 8)};               \
-                __VA_ARGS__                                                                                        \
-            }                                                                                                      \
-                                                                                                                   \
-            for (u64 match_result_v{match_result[1]}; match_result_v != 0; match_result_v &= match_result_v - 1) { \
-                const size_t match_index{static_cast<size_t>(8 + std::countr_zero(match_result_v) / 8)};           \
-                __VA_ARGS__                                                                                        \
-            }                                                                                                      \
-        }
-
-#elif defined(MCL_ARCHITECTURE_X86_64)
-
-struct meta_byte_group {
-    meta_byte_group(meta_byte* ptr)
-        : data{_mm_load_si128(reinterpret_cast<__m128i const*>(ptr))}
-    {}
-
-    u16 match(meta_byte cmp)
-    {
-        return _mm_movemask_epi8(_mm_cmpeq_epi8(data, _mm_set1_epi8(static_cast<u8>(cmp))));
-    }
-
-    u16 match_empty_or_tombstone()
-    {
-        return _mm_movemask_epi8(data);
-    }
-
-    bool is_any_empty()
-    {
-        return match(meta_byte::empty);
-    }
-
-    bool is_all_empty_or_tombstone()
-    {
-        return match_empty_or_tombstone() == 0xffff;
-    }
-
-    __m128i data;
-};
-
-#    define MCL_HMAP_MATCH_META_BYTE_GROUP(MATCH, ...)                                                 \
-        {                                                                                              \
-            for (const u64 match_result{MATCH}; match_result != 0; match_result &= match_result - 1) { \
-                const size_t match_index{static_cast<size_t>(std::countr_zero(match_result))};         \
-                __VA_ARGS__                                                                            \
-            }                                                                                          \
-        }
-
-#else
-
-struct meta_byte_group {
-    static constexpr u64 msb = 0x8080808080808080;
-    static constexpr u64 lsb = 0x0101010101010101;
-    static constexpr u64 not_msb = 0x7f7f7f7f7f7f7f7f;
-    static constexpr u64 not_lsb = 0xfefefefefefefefe;
-
-    meta_byte_group(meta_byte* ptr)
-    {
-        std::memcpy(data.data(), ptr, sizeof(data));
-    }
-
-    std::array<u64, 2> match(meta_byte cmp)
-    {
-        DEBUG_ASSERT(is_full(cmp));
-
-        const u64 vcmp = lsb * static_cast<u64>(cmp);
-        return {(msb - ((data[0] ^ vcmp) & not_msb)) & ~data[0] & msb, (msb - ((data[1] ^ vcmp) & not_msb)) & ~data[1] & msb};
-    }
-
-    std::array<u64, 2> match_empty_or_tombstone()
-    {
-        return {data[0] & msb, data[1] & msb};
-    }
-
-    bool is_any_empty()
-    {
-        static_assert((static_cast<u8>(meta_byte::empty) & 0xc0) == 0xc0);
-        static_assert((static_cast<u8>(meta_byte::tombstone) & 0xc0) == 0x80);
-
-        return (data[0] & (data[0] << 1) & msb) || (data[1] & (data[1] << 1) & msb);
-    }
-
-    bool is_all_empty_or_tombstone()
-    {
-        return (data[0] & data[1] & msb) == msb;
-    }
-
-    std::array<u64, 2> data;
-};
-
-#    define MCL_HMAP_MATCH_META_BYTE_GROUP(MATCH, ...)                                                             \
-        {                                                                                                          \
-            const std::array<u64, 2> match_result{MATCH};                                                          \
-                                                                                                                   \
-            for (u64 match_result_v{match_result[0]}; match_result_v != 0; match_result_v &= match_result_v - 1) { \
-                const size_t match_index{static_cast<size_t>(std::countr_zero(match_result_v) / 8)};               \
-                __VA_ARGS__                                                                                        \
-            }                                                                                                      \
-                                                                                                                   \
-            for (u64 match_result_v{match_result[1]}; match_result_v != 0; match_result_v &= match_result_v - 1) { \
-                const size_t match_index{static_cast<size_t>(8 + std::countr_zero(match_result_v) / 8)};           \
-                __VA_ARGS__                                                                                        \
-            }                                                                                                      \
-        }
-
-#endif
-
-template<typename ValueType>
-union slot_union {
-    slot_union() {}
-    ValueType value;
-};
-
-}  // namespace detail
 
 template<bool IsConst, typename KeyType, typename MappedType, typename Hash, typename Pred>
 class hmap_iterator {
@@ -319,7 +130,7 @@ private:
     static_assert(!std::is_reference_v<key_type>);
     static_assert(!std::is_reference_v<mapped_type>);
 
-    static constexpr size_t group_size{16};
+    static constexpr size_t group_size{detail::meta_byte_group::max_group_size};
     static constexpr size_t average_max_group_load{group_size - 2};
 
 public:
@@ -327,13 +138,38 @@ public:
     {
         initialize_members(1);
     }
-    hmap(const hmap&);
-    hmap(hmap&&);
-    hmap& operator=(const hmap&);
-    hmap& operator=(hmap&&);
+    hmap(const hmap& other)
+    {
+        deep_copy(other);
+    }
+    hmap(hmap&& other)
+        : group_index_mask{std::exchange(other.group_index_mask, 0)}
+        , empty_slots{std::exchange(other.empty_slots, 0)}
+        , full_slots{std::exchange(other.full_slots, 0)}
+        , mbs{std::move(other.mbs)}
+        , slots{std::move(other.slots)}
+    {
+    }
+    hmap& operator=(const hmap& other)
+    {
+        deep_copy(other);
+        return *this;
+    }
+    hmap& operator=(hmap&& other)
+    {
+        group_index_mask = std::exchange(other.group_index_mask, 0);
+        empty_slots = std::exchange(other.empty_slots, 0);
+        full_slots = std::exchange(other.full_slots, 0);
+        mbs = std::move(other.mbs);
+        slots = std::move(other.slots);
+        return *this;
+    }
 
     ~hmap()
     {
+        if (!mbs)
+            return;
+
         clear();
     }
 
@@ -403,8 +239,8 @@ public:
             return;
         }
 
-        const size_t item_index{static_cast<size_t>(std::distance(mbs.get(), position.mb_ptr))};
-        const size_t group_index{item_index / group_size};
+        const std::size_t item_index{static_cast<std::size_t>(std::distance(mbs.get(), position.mb_ptr))};
+        const std::size_t group_index{item_index / group_size};
         const detail::meta_byte_group g{mbs.get() + group_index * group_size};
 
         erase_impl(item_index, std::move(g));
@@ -415,8 +251,8 @@ public:
             return;
         }
 
-        const size_t item_index{static_cast<size_t>(std::distance(mbs.get(), position.mb_ptr))};
-        const size_t group_index{item_index / group_size};
+        const std::size_t item_index{static_cast<std::size_t>(std::distance(mbs.get(), position.mb_ptr))};
+        const std::size_t group_index{item_index / group_size};
         const detail::meta_byte_group g{mbs.get() + group_index * group_size};
 
         erase_impl(item_index, std::move(g));
@@ -424,7 +260,7 @@ public:
     template<typename K = key_type>
     size_t erase(const K& key)
     {
-        const size_t hash{hasher{}(key)};
+        const std::size_t hash{hasher{}(key)};
         const detail::meta_byte mb{detail::meta_byte_from_hash(hash)};
 
         size_t group_index{detail::group_index_from_hash(hash, group_index_mask)};
@@ -433,7 +269,7 @@ public:
             detail::meta_byte_group g{mbs.get() + group_index * group_size};
 
             MCL_HMAP_MATCH_META_BYTE_GROUP(g.match(mb), {
-                const size_t item_index{group_index * group_size + match_index};
+                const std::size_t item_index{group_index * group_size + match_index};
 
                 if (key_equal{}(slots[item_index].value.first, key)) [[likely]] {
                     erase_impl(item_index, std::move(g));
@@ -452,7 +288,7 @@ public:
     template<typename K = key_type>
     iterator find(const K& key)
     {
-        const size_t hash{hasher{}(key)};
+        const std::size_t hash{hasher{}(key)};
         const detail::meta_byte mb{detail::meta_byte_from_hash(hash)};
 
         size_t group_index{detail::group_index_from_hash(hash, group_index_mask)};
@@ -461,7 +297,7 @@ public:
             detail::meta_byte_group g{mbs.get() + group_index * group_size};
 
             MCL_HMAP_MATCH_META_BYTE_GROUP(g.match(mb), {
-                const size_t item_index{group_index * group_size + match_index};
+                const std::size_t item_index{group_index * group_size + match_index};
 
                 if (key_equal{}(slots[item_index].value.first, key)) [[likely]] {
                     return iterator_at(item_index);
@@ -478,7 +314,7 @@ public:
     template<typename K = key_type>
     const_iterator find(const K& key) const
     {
-        const size_t hash{hasher{}(key)};
+        const std::size_t hash{hasher{}(key)};
         const detail::meta_byte mb{detail::meta_byte_from_hash(hash)};
 
         size_t group_index{detail::group_index_from_hash(hash, group_index_mask)};
@@ -487,7 +323,7 @@ public:
             detail::meta_byte_group g{mbs.get() + group_index * group_size};
 
             MCL_HMAP_MATCH_META_BYTE_GROUP(g.match(mb), {
-                const size_t item_index{group_index * group_size + match_index};
+                const std::size_t item_index{group_index * group_size + match_index};
 
                 if (key_equal{}(slots[item_index].value.first, key)) [[likely]] {
                     return const_iterator_at(item_index);
@@ -546,27 +382,27 @@ public:
     }
 
 private:
-    iterator iterator_at(size_t item_index)
+    iterator iterator_at(std::size_t item_index)
     {
         return {mbs.get() + item_index, slots.get() + item_index};
     }
-    const_iterator const_iterator_at(size_t item_index)
+    const_iterator const_iterator_at(std::size_t item_index) const
     {
         return {mbs.get() + item_index, slots.get() + item_index};
     }
 
-    std::pair<size_t, bool> find_key_or_empty_slot(const key_type& key)
+    std::pair<std::size_t, bool> find_key_or_empty_slot(const key_type& key)
     {
-        const size_t hash{hasher{}(key)};
+        const std::size_t hash{hasher{}(key)};
         const detail::meta_byte mb{detail::meta_byte_from_hash(hash)};
 
-        size_t group_index{detail::group_index_from_hash(hash, group_index_mask)};
+        std::size_t group_index{detail::group_index_from_hash(hash, group_index_mask)};
 
         while (true) {
             detail::meta_byte_group g{mbs.get() + group_index * group_size};
 
             MCL_HMAP_MATCH_META_BYTE_GROUP(g.match(mb), {
-                const size_t item_index{group_index * group_size + match_index};
+                const std::size_t item_index{group_index * group_size + match_index};
 
                 if (key_equal{}(slots[item_index].value.first, key)) [[likely]] {
                     return {item_index, true};
@@ -581,19 +417,19 @@ private:
         }
     }
 
-    size_t find_empty_slot_to_insert(const size_t hash)
+    std::size_t find_empty_slot_to_insert(const std::size_t hash)
     {
         if (empty_slots == 0) [[unlikely]] {
             grow_and_rehash();
         }
 
-        size_t group_index{detail::group_index_from_hash(hash, group_index_mask)};
+        std::size_t group_index{detail::group_index_from_hash(hash, group_index_mask)};
 
         while (true) {
             detail::meta_byte_group g{mbs.get() + group_index * group_size};
 
             MCL_HMAP_MATCH_META_BYTE_GROUP(g.match_empty_or_tombstone(), {
-                const size_t item_index{group_index * group_size + match_index};
+                const std::size_t item_index{group_index * group_size + match_index};
 
                 if (mbs[item_index] == detail::meta_byte::empty) [[likely]] {
                     --empty_slots;
@@ -609,7 +445,7 @@ private:
         }
     }
 
-    void erase_impl(size_t item_index, detail::meta_byte_group&& g)
+    void erase_impl(std::size_t item_index, detail::meta_byte_group&& g)
     {
         slots[item_index].value->~value_type();
 
@@ -624,12 +460,12 @@ private:
 
     void grow_and_rehash()
     {
-        const size_t new_group_count{2 * (group_index_mask + 1)};
+        const std::size_t new_group_count{2 * (group_index_mask + 1)};
 
         pow2_resize(new_group_count);
     }
 
-    void pow2_resize(size_t new_group_count)
+    void pow2_resize(std::size_t new_group_count)
     {
         auto iter{begin()};
 
@@ -639,15 +475,27 @@ private:
         initialize_members(new_group_count);
 
         for (; iter != end(); ++iter) {
-            const size_t hash{hasher{}(iter->first)};
-            const size_t item_index{find_empty_slot_to_insert(hash)};
+            const std::size_t hash{hasher{}(iter->first)};
+            const std::size_t item_index{find_empty_slot_to_insert(hash)};
 
             new (&slots[item_index].value) value_type(std::move(iter.slot_ptr->value));
             iter.slot_ptr->value.~value_type();
         }
     }
 
-    void initialize_members(size_t group_count)
+    void deep_copy(const hmap& other)
+    {
+        initialize_members(other.group_index_mask + 1);
+
+        for (auto iter = other.begin(); iter != other.end(); ++iter) {
+            const std::size_t hash{hasher{}(iter->first)};
+            const std::size_t item_index{find_empty_slot_to_insert(hash)};
+
+            new (&slots[item_index].value) value_type(iter.slot_ptr->value);
+        }
+    }
+
+    void initialize_members(std::size_t group_count)
     {
         // DEBUG_ASSERT(group_count != 0 && std::ispow2(group_count));
 
@@ -660,7 +508,7 @@ private:
 
     void clear_metadata()
     {
-        const size_t group_count{group_index_mask + 1};
+        const std::size_t group_count{group_index_mask + 1};
 
         empty_slots = group_count * average_max_group_load;
         full_slots = 0;
@@ -669,9 +517,9 @@ private:
         mbs[group_count * group_size] = detail::meta_byte::end_sentinel;
     }
 
-    size_t group_index_mask;
-    size_t empty_slots;
-    size_t full_slots;
+    std::size_t group_index_mask;
+    std::size_t empty_slots;
+    std::size_t full_slots;
     std::unique_ptr<detail::meta_byte[]> mbs;
     std::unique_ptr<slot_type[]> slots;
 };
