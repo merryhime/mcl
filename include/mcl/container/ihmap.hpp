@@ -13,6 +13,7 @@
 
 #include "mcl/assert.hpp"
 #include "mcl/container/detail/meta_byte.hpp"
+#include "mcl/container/detail/meta_byte_group.hpp"
 #include "mcl/container/detail/slot_union.hpp"
 #include "mcl/hash/xmrx.hpp"
 #include "mcl/hint/assume.hpp"
