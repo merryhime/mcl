@@ -93,7 +93,7 @@ endif()
 # Dependencies
 
 if (NOT TARGET Catch2::Catch2)
-    find_package(Catch2 QUIET)
+    find_package(Catch2 3 QUIET)
 endif()
 
 if (NOT TARGET fmt::fmt)
