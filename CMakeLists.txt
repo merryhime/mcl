@@ -103,7 +103,7 @@ endif()
 # Project files
 
 add_subdirectory(src)
-if (TARGET Catch2::Catch2)
+if (TARGET Catch2::Catch2 AND MASTER_PROJECT)
     add_subdirectory(tests)
 endif()
 
