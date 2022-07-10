@@ -4,6 +4,8 @@
 
 // Reference: http://jonkagstrom.com/bit-mixer-construction/
 
+#pragma once
+
 #include <functional>
 
 #include "mcl/bit/rotate.hpp"

@@ -470,7 +470,7 @@ private:
     {
         group_type& g{groups[pos.group_index]};
 
-        g.slots[pos.slot_index].value->~value_type();
+        g.slots[pos.slot_index].value.~value_type();
 
         --full_slots;
         if (g.meta.is_any_empty()) {

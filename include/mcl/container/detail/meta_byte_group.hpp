@@ -134,7 +134,7 @@ struct meta_byte_group {
 
     bool is_all_empty_or_tombstone() const
     {
-        return match_empty_or_tombstone() const == 0xffff;
+        return match_empty_or_tombstone() == 0xffff;
     }
 
     meta_byte get(size_t index) const
@@ -152,20 +152,20 @@ struct meta_byte_group {
     __m128i data;
 };
 
-#    define MCL_HMAP_MATCH_META_BYTE_GROUP(MATCH, ...)                                                 \
-        {                                                                                              \
-            for (const u32 match_result{MATCH}; match_result != 0; match_result &= match_result - 1) { \
-                const size_t match_index{static_cast<size_t>(std::countr_zero(match_result))};         \
-                __VA_ARGS__                                                                            \
-            }                                                                                          \
+#    define MCL_HMAP_MATCH_META_BYTE_GROUP(MATCH, ...)                                           \
+        {                                                                                        \
+            for (u16 match_result{MATCH}; match_result != 0; match_result &= match_result - 1) { \
+                const size_t match_index{static_cast<size_t>(std::countr_zero(match_result))};   \
+                __VA_ARGS__                                                                      \
+            }                                                                                    \
         }
 
-#    define MCL_HMAP_MATCH_META_BYTE_GROUP_EXCEPT_LAST(MATCH, ...)                                                  \
-        {                                                                                                           \
-            for (const u32 match_result{(MATCH) & (0x7fff)}; match_result != 0; match_result &= match_result - 1) { \
-                const size_t match_index{static_cast<size_t>(std::countr_zero(match_result))};                      \
-                __VA_ARGS__                                                                                         \
-            }                                                                                                       \
+#    define MCL_HMAP_MATCH_META_BYTE_GROUP_EXCEPT_LAST(MATCH, ...)                                                              \
+        {                                                                                                                       \
+            for (u16 match_result{static_cast<u16>((MATCH) & (0x7fff))}; match_result != 0; match_result &= match_result - 1) { \
+                const size_t match_index{static_cast<size_t>(std::countr_zero(match_result))};                                  \
+                __VA_ARGS__                                                                                                     \
+            }                                                                                                                   \
         }
 
 #else

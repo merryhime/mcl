@@ -9,6 +9,7 @@ namespace mcl::detail {
 template<typename ValueType>
 union slot_union {
     slot_union() {}
+    ~slot_union() {}
     ValueType value;
 };
 
