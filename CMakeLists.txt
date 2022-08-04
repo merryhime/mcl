@@ -70,7 +70,7 @@ if (MSVC)
         list(APPEND MCL_CXX_FLAGS /WX)
     endif()
 
-    if (CMAKE_VS_PLATFORM_TOOLSET MATCHES "LLVM-vs[0-9]+")
+    if (CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
         list(APPEND MCL_CXX_FLAGS
              -Qunused-arguments
              -Wno-missing-braces)
