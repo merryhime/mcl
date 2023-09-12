@@ -23,7 +23,7 @@ constexpr size_t xmrx(size_t x)
 
 template<typename T>
 struct avalanche_xmrx {
-    size_t operator()(const T& value)
+    size_t operator()(const T& value) const
     {
         return xmrx(std::hash<T>{}(value));
     }
