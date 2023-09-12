@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.12 FATAL_ERROR)
 include(GNUInstallDirs)
 
-project(mcl LANGUAGES CXX VERSION 0.1.12)
+project(mcl LANGUAGES CXX VERSION 0.1.13)
 
 # Determine if we're built as a subproject (using add_subdirectory)
 # or if this is the master project.
